@@ -252,7 +252,19 @@ class ChatManager:
         if self.db_client.detect_new_chat():
             print("new chat detected")
             return None, None
-        self.send_message(ai_answer)
+
+				################# 해당 부분 추가 #################
+        # 담당자 배정 로직 실행
+        assign_ment_list: list = [
+            "담당 매니저",
+        ]
+        if any(word in ai_answer for word in assign_ment_list):
+            self.chat_data.set_assigned()
+            self.db_client.update_assignee("1")
+        ###################################################
+
+				######## 아래 send_message 파라미터에 self.chat_data.is_assigned 추가 ########
+        self.send_message(ai_answer, self.chat_data.is_assigned) # 이 부분 수정
         messages.append(
             ChatCompletionAssistantMessageParam(role="assistant", content=ai_answer)
         )
@@ -429,14 +441,14 @@ class ChatManager:
         # 최종 답변 반환
         return text.strip()
 
-    def send_message(self, message):
+    def send_message(self, message, assign=False):
         """db저장과 전송까지 한번에 합니다."""
         if not message or message.isspace():
             return self.chat_data.get_answer()
 
         total_answer = self.chat_data.update_answer(message)
         self.db_client.update_conversation_item("answer", total_answer)
-        self.chat_client.send_message(message)
+        self.chat_client.send_message(message, assign=assign)
 
         return total_answer
 

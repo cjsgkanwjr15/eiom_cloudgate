@@ -3,58 +3,39 @@ from datetime import datetime, timedelta
 
 
 class ChatData:
-    """
-    현재 들어온 채팅과 답변에 관련한 데이터 클래스
-    그냥 전체 공용 config class라고 생각해도 좋음
-    ************************************************************
-    user_id와 user_chat_id는 반드시 값을 넣을것!!
-    DB 및 통계낼 때 unique 조건 검사하는데 null값이면 오류발생함
-    ************************************************************
-    """
+    """현재 들어온 채팅과 답변에 관련한 데이터 클래스
+    그냥 전체 공용 config class라고 생각해도 좋음"""
 
     def __init__(self, body, is_live=True):
         self._is_live = is_live
 
         # .get()을 사용하여 키가 없는 경우 None을 반환하도록 합니다.
-        self.refer = body.get("refers", {})
-        self.refer_userchat = self.refer.get("userChat", {})
-        self.refer_user = self.refer.get("user", {})
-        self.user_profile = self.refer_user.get("profile", {})
-        self.user_id: str = self.refer_userchat.get("userId")
-        self.user_chat_id: str = self.refer_userchat.get("id")
-        self.assignee_id = self.refer_userchat.get("assigneeId")
-        self.team_id = self.refer_userchat.get("teamId")
-        self.manager_ids = self.refer_userchat.get("managerIds", [])
-        self.reply_count = self.refer_userchat.get("replyCount")
-        self.tags: list[str] = self.refer_userchat.get("tags", [])
-        self.user_name = self.user_profile.get("name")
-        self.user_mobile_number = self.user_profile.get("mobileNumber")
-        self.user_email = self.user_profile.get("email")
+        # TWC(클라우드게이트 사)측과 논의한 내용들
+        chat_room_id = str(body.get("chatRoomId", ""))
+        # 적은 구조변경 위해 user_id에도 chat_room_id를 넣어둠
+        self.user_id = chat_room_id
+        self.user_chat_id = chat_room_id
+        self._is_assigned = False
 
-        self.entity = body.get("entity", {})
-        self.meet = self.entity.get("meet")  # 통화연결이면 있음
-        self.channel_id = self.entity.get("channelId")
-        self.user_chat = self.entity.get("plainText")
-        self.person_type = self.entity.get("personType")
-        self.action = self.entity.get("log", {}).get("action")
-        self.files = self.entity.get("files", [])
-        self.workflow_button = self.entity.get("workflowButton")
-        self.support_bot_id = self.entity.get("workflow", {}).get("id")
+        self.user_name = None
+        self.user_mobile_number = None
+        self.user_email = None
 
+        self.user_chat = body.get("message")
+        self.person_type = body.get("personType")
+        # 파일쪽 코드는 이후 수정 필요(이쪽은 파일 들어왔으면 True/ 아니면 False라 채널톡과 상이)
+        self._files: bool = body.get("files")
         # 유저의 채팅 시간 추출
-        self.chat_time = self.extract_chat_time(self.entity.get("createdAt"))
+        self.chat_time = body.get("chatTime")
 
-        # handling_workflow_id가 None인 경우, source의 page 값에서 workflowId 추출
-        self.support_bot_id = self.support_bot_id or self.extract_workflow_id(
-            self.refer_userchat.get("source", {}).get("page")
-        )
+        self.brand_id = str(body.get("brandId", ""))
 
         # 커스텀 데이터
         # 데이터 전처리
         # question의 주체
         self.role = self.determine_role(self.person_type)
 
-        self.conversation_id: str | None = None
+        self.conversation_id = None
         self.chat_type = "text"
         self.file_types = None
         self.file_keys = None
@@ -82,27 +63,29 @@ class ChatData:
         return person_type if person_type in ["user", "bot"] else "manager"
 
     def __str__(self):
-        return f"ChatData(user_id={self.user_id}, user_chat_id={self.user_chat_id}, assignee_id={self.assignee_id}, reply_count={self.reply_count}, user_chat={self.user_chat}, person_type={self.person_type}, action={self.action}, files={self.files})"
-
+        return f"ChatData(user_id={self.user_id}, user_chat_id={self.user_chat_id}, user_chat={self.user_chat}, person_type={self.person_type}, files={self._files})"
+        
     def __repr__(self):
         return str(self)
 
     def files_exist(self):
-        return bool(self.files)
+        return bool(self._files)
 
     def set_file_types(self):
         self.chat_type = "files"
         self.file_types = [
-            (
-                re.search(r"\.([^.]+)$", file["name"]).group(1)
-                if re.search(r"\.([^.]+)$", file["name"])
-                else "etc"
-            )
-            for file in self.files
+            "file:true"
+            # (
+            #     re.search(r"\.([^.]+)$", file["name"]).group(1)
+            #     if re.search(r"\.([^.]+)$", file["name"])
+            #     else "etc"
+            # )
+            # for file in self.files
         ]
 
     def set_file_keys(self):
-        self.file_keys = [file.get("key") for file in self.files]
+        # self.file_keys = [file.get("key") for file in self.files]
+        self.file_keys = ["file:true"]
 
     def alter_chat(self, message):
         self.user_chat = message
@@ -145,38 +128,39 @@ class ChatData:
         """봇 메시지인지 여부를 반환"""
         return self.person_type == "bot"
 
+    @property
     def is_assigned(self):
-        """매니저에게 배정되어있는지 여부를 반환"""
-        return self.assignee_id is not None
+        return self._is_assigned
+
+    def set_assigned(self):
+        self._is_assigned = True
 
     def need_to_save(self):
-        if self.is_action():
-            return False, "action"
+        # if self.is_action():
+        #     return False, "action"
 
-        if self.is_button():
-            return False, "button"
+        # if self.is_button():
+        #     return False, "button"
 
         if self.is_bot_message():
             return False, "bot message"
 
-        if self.meet is not None:
-            return False, "meet"
+        # if self.is_live is False:
+        #     # Appenv를 production으로 하지 않은 상황에서 원하는 로직 작성
+        #     return True, "not live need save"
+        # else:
+        #     # Appenv를 production으로 한 상황에서 원하는 로직 작성
 
-        if self.is_live is False:
-            # Appenv를 production으로 하지 않은 상황에서 원하는 로직 작성
-            return True, "not live need save"
-        else:
-            # Appenv를 production으로 한 상황에서 원하는 로직 작성
+        #     # 이런식으로 쓰면 됨. 커스텀 알아서 하면 됨
+        #     if self.is_bot_message_of([]):
+        #         return False, "answer-banned bot message"
+        #     if self.is_team_supported([]):
+        #         return False, "answer-banned team supported"
+        #     if self.has_tags_in([]):
+        #         return False, "answer-banned tags"
 
-            # 이런식으로 쓰면 됨. 커스텀 알아서 하면 됨
-            if self.is_bot_message_of([]):
-                return False, "answer-banned bot message"
-            if self.is_team_supported([]):
-                return False, "answer-banned team supported"
-            if self.has_tags_in([]):
-                return False, "answer-banned tags"
-
-            return True, "live need to save"
+        #     return True, "live need to save"
+        return True, "live need to save"
 
     def has_tags_in(self, tags: list = []):
         """해당 태그들중 하나라도 가지고 있는지 여부"""
@@ -186,11 +170,11 @@ class ChatData:
         if not self.is_user_message():
             return False, "not user message"
 
-        # assignee가 없을때만 답변
-        if self.assignee_id is not None:
-            # 특정 담당자를 제외한 담당자에게 배정될때만 답변금지
-            if self.assignee_id not in []:
-                return False, "assigned to manager"
+        # # assignee가 없을때만 답변
+        # if self.assignee_id is not None:
+        #     # 특정 담당자를 제외한 담당자에게 배정될때만 답변금지
+        #     if self.assignee_id not in []:
+        #         return False, "assigned to manager"
 
         return True, "live need to answer"
 

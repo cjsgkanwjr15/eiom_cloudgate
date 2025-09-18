@@ -22,16 +22,15 @@ class ChannelTalk:
 
         self.x_access_key = x_access_key
         self.x_access_secret = x_access_secret
-        self.headers = {
-            "accept": "application/json",
-            "Content-Type": "application/json",
-            "x-access-key": self.x_access_key,
-            "x-access-secret": self.x_access_secret,
-        }
-        self.base_url = "https://api.channel.io"
+
+        ################ 이 부분 수정 ################
+        self.headers = {"Content-Type": "application/json", "accept": "*/*"}
+        self.base_url = "https://www.thecloudgate.io:443/api/external/athome/ai"
+        ######## 위 base_url 부분에서 athome으로 되어있는 부분 그대로 사용하면 됨 ########
 
         self.group_id = group_id
         self.bot_name = bot_name
+
 
     def check_is_closed_user_chat(self):
         try:
@@ -75,42 +74,46 @@ class ChannelTalk:
 
         return "".join(parts)
 
-    def send_message(self, message):
+    # send_message
+    def send_message(self, message, assign=False):
         """채널에 메세지를 보냅니다"""
         if not message or message.isspace():
             return None
 
-        is_closed_user_chat = self.check_is_closed_user_chat()
-        if is_closed_user_chat:
-            print("종료된 채팅방")
-            return None
+        api_url = f"{self.base_url}/message"
 
-        messages = self.split_long_string(message)
-        # message에서 1000자 넘어가는 문장마다 문장부호(., !, ?)를 기준으로 잘라서 messages에 저장
-        api_url = (
-            f"{self.base_url}/open/v5/user-chats/{self.chat_data.user_chat_id}/messages"
-        )
+        if len(message) > 1000:
+            message = self.split_long_string(message, max_length=1000)
+            for msg in message:
+                self._send_single_message(api_url, msg, assign)
+        else:
+            self._send_single_message(api_url, message, assign)
 
-        for msg in messages:
-            msg = self.replace_inequality_symbols_except_html_tag(msg)
-            self._send_single_message(api_url, msg)
-
-        return messages
-
-    def _send_single_message(self, api_url, msg):
+        return message
+        
+        
+    # _send_single_message
+    def _send_single_message(self, api_url, msg, assign=False):
         context = json.dumps(msg, ensure_ascii=False)
         print(f"send_message to {self.chat_data.user_chat_id}: {context}")
         data = {
-            "blocks": [{"type": "text", "value": msg}],
-            "options": ["actAsManager", "doNotPost", "immutable"],
+            "brandId": int(self.chat_data.brand_id),
+            "chatRoomId": int(self.chat_data.user_chat_id),
+            "message": msg,
+            "assignManager": assign,
         }
 
         try:
-            self._send_request_get_json("post", api_url, json=data)
+            response = self._send_request_get_json("post", api_url, json=data)
+            print("send_message response: ", response)
         except requests.exceptions.RequestException as e:
+            print(e)
+        except Exception as e:
             print(e)
 
         sleep(0.2)
+    
+    
 
     def send_message_to_customer_support_group(self, type="담당자 호출 질문"):
         """channel_id, group_id 설정 필수!!! 채널에 메세지를 보냅니다"""

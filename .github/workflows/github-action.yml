@@ -5,6 +5,7 @@ on:
     branches:
       - develop
       - test
+      - cloudgate-migration
 
 jobs:
   deploy:
@@ -36,6 +37,11 @@ jobs:
           # 브랜치가 'test'인 경우 함수 이름에 '_test' 접미사 추가
           if [ "${{ github.ref }}" == "refs/heads/test" ]; then
             FUNCTION_NAME="${FUNCTION_NAME}_test"
+          fi
+
+          # 브랜치가 'cloudgate-migration'인 경우 특정 함수 이름 사용
+          if [ "${{ github.ref }}" == "refs/heads/cloudgate-migration" ]; then
+            FUNCTION_NAME="${FUNCTION_NAME}_cloudgate"
           fi
 
           # AWS CLI를 사용하여 Lambda 함수 코드 업데이트

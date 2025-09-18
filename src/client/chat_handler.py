@@ -164,11 +164,11 @@ class ChatHandler:
                     break
 
                 # 담당자 호출할 키워드, 담당자 아이디 입력
-                assign_ment_list: list = ["담당 매니저"]
-                assignee_list: list = ["383178"]  # 383178 고은비
-                self.chat_manager.call_assignee(
-                    ai_answer, assign_ment_list, assignee_list
-                )
+                # assign_ment_list: list = ["담당 매니저"]
+                # assignee_list: list = ["383178"]  # 383178 고은비
+                # self.chat_manager.call_assignee(
+                #     ai_answer, assign_ment_list, assignee_list
+                # )
 
                 if tool_calls and self.tool_call_resolver.resolve(
                     self.messages,
@@ -213,9 +213,13 @@ class ChatHandler:
             # 이미 pre_messages가 있으면 유저 기본정보를 저장했다는 뜻, pre_messages_summary는 확인 안해도 됨(아마)
             print("pre_messages already exist")
         else:
-            pre_messages, pre_messages_summary = self.get_pre_messages_info(
-                do_summary=False
-            )
+		        ################### 아래 부분 수정 ###################
+		        # pre_messages, pre_messages_summary = self.get_pre_messages_info(
+		        #     do_summary=False
+		        # )
+            pre_messages = []
+            pre_messages_summary: dict = {"summary": "", "form_input": []}
+            #######################################################
             self.db_client.write_user_data(
                 "pre_messages", json.dumps(pre_messages, ensure_ascii=False)
             )
